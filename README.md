@@ -1,6 +1,6 @@
 # 社畜小精靈
 
-![蜜袋鼯小精靈打字動畫](art/floating_mascot.gif)
+![蜜袋鼯打字，思想雲顯示：早知道有今天，我昨天就會先知道。](docs/mascot-preview.gif)
 
 先從系統匣或選單列結束舊版小精靈和舊版提醒清單。解壓縮後，Windows 開啟 ClockSprite.exe，macOS 開啟 ClockSprite.app。既有設定、待辦、完成紀錄、打卡確認及日曆快取使用原有資料位置。
 
