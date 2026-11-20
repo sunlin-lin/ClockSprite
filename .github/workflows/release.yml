@@ -39,7 +39,7 @@ jobs:
           fi
           echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
       - name: Test
-        run: go test model.go storage.go reminders.go calendar_picker.go appearance.go mascot_animation.go model_linux_test.go storage_linux_test.go mascot_animation_test.go
+        run: go test model.go storage.go reminders.go calendar_picker.go appearance.go mascot_animation.go quote_settings.go model_linux_test.go storage_linux_test.go mascot_animation_test.go
       - name: Build and package
         env:
           CGO_ENABLED: '0'

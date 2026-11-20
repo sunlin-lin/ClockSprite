@@ -24,7 +24,7 @@ var taipei = time.FixedZone("Taipei", 8*3600)
 var weekdays = [7]string{"日", "一", "二", "三", "四", "五", "六"}
 var weekdayOrder = []int{1, 2, 3, 4, 5, 6, 0}
 
-//go:embed art *.csv
+//go:embed art *.csv quotes/nonsense.txt
 var resources embed.FS
 
 type rule struct {
@@ -208,6 +208,8 @@ func currentRow() row {
 }
 func onAction(id int) {
 	switch id {
+	case actionQuoteSettings, actionQuoteSave, actionQuoteImport, actionQuoteExport:
+		handleQuoteAction(id)
 	case actionAppearance:
 		showAppearance()
 	case actionClear:
@@ -401,7 +403,7 @@ func speak(now time.Time) {
 	if clock.Hidden || activeReminder.action != "" {
 		return
 	}
-	const quoteCount = 300
+	quoteCount := speechCount()
 	var pick int
 	if lastQuote >= 0 && lastQuote < quoteCount {
 		pick = random.IntN(quoteCount - 1)
@@ -634,5 +636,9 @@ const (
 	actionShowHistory
 	actionClearHistory
 	actionAppearance
+	actionQuoteSettings
+	actionQuoteSave
+	actionQuoteImport
+	actionQuoteExport
 	actionCalendarDay = 200
 )

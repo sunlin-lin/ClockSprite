@@ -182,9 +182,12 @@ func paintMascot(pick int) {
 		setSpriteFrame(0)
 	}
 	updateSpriteTimer()
+	quote := customSpeech(pick)
+	send(quoteBubbleText, "setStringValue:", str(quote))
+	send(quoteBubbleText, "setHidden:", quote == "")
 	path := ""
 	switch {
-	case pick == -2:
+	case pick == -2 || quote != "":
 		path = "art/reminder_cloud.png"
 	case pick >= 0:
 		path = fmt.Sprintf("art/bubbles/%03d.png", pick)
@@ -288,6 +291,9 @@ func build() {
 		send(portrait, "release")
 	}
 	bubbleView = control(parent, imageClass, frame(0, 176, 340, 134))
+	quoteBubbleText = label(parent, "", frame(48, 207, 244, 76))
+	send(quoteBubbleText, "setAlignment:", int64(2))
+	send(quoteBubbleText, "setLineBreakMode:", int64(1))
 	buildReminder(parent)
 	grip := control(parent, gripClass, frame(313, 3, 25, 25))
 	send(grip, "setTitle:", str("◢"))
@@ -297,7 +303,7 @@ func build() {
 	settingsWindow = window("社畜小精靈設定", frame(x-665, y+60, 625, 555), 3)
 	send(settingsWindow, "setDelegate:", controller)
 	parent = send(settingsWindow, "contentView")
-	label(parent, "打卡與語錄", frame(18, 518, 160, 21))
+	button(parent, "幹話語錄", actionQuoteSettings, frame(15, 512, 143, 32), false)
 	forceClockButton = button(parent, "強制提醒上下班打卡", 0, frame(190, 517, 236, 25), true)
 	appearanceButton = button(parent, "角色圖示", actionAppearance, frame(437, 512, 172, 32), false)
 	label(parent, "上班", frame(18, 480, 40, 22))
@@ -607,4 +613,58 @@ func showAppearance() {
 			}
 		}
 	}
+}
+
+var quoteWindow, quoteEdit, quoteBubbleText objc.ID
+
+func showQuoteEditor(text string) {
+	if quoteWindow != 0 && objc.Send[bool](quoteWindow, sel("isVisible")) {
+		send(quoteWindow, "makeKeyAndOrderFront:", objc.ID(0))
+		return
+	}
+	if quoteWindow == 0 {
+		area := objc.Send[rect](settingsWindow, sel("frame"))
+		quoteWindow = window("幹話語錄", frame(area.Origin.X, area.Origin.Y, 610, 443), 3)
+		parent := send(quoteWindow, "contentView")
+		label(parent, "每行一句。匯入會追加新語錄，按儲存後才會生效。", frame(15, 408, 580, 22))
+		scroll := control(parent, cls("NSScrollView"), frame(15, 52, 580, 347))
+		send(scroll, "setHasVerticalScroller:", true)
+		send(scroll, "setBorderType:", int64(2))
+		quoteEdit = send(send(cls("NSTextView"), "alloc"), "initWithFrame:", frame(0, 0, 565, 345))
+		send(quoteEdit, "setRichText:", false)
+		send(quoteEdit, "setVerticallyResizable:", true)
+		send(quoteEdit, "setAutoresizingMask:", uint64(2))
+		send(send(quoteEdit, "textContainer"), "setWidthTracksTextView:", true)
+		send(scroll, "setDocumentView:", quoteEdit)
+		send(quoteEdit, "release")
+		button(parent, "匯入文字檔…", actionQuoteImport, frame(12, 12, 128, 31), false)
+		button(parent, "匯出文字檔…", actionQuoteExport, frame(145, 12, 128, 31), false)
+		button(parent, "儲存", actionQuoteSave, frame(490, 12, 108, 31), false)
+	}
+	setQuoteEditorText(text)
+	send(application, "activateIgnoringOtherApps:", true)
+	send(quoteWindow, "makeKeyAndOrderFront:", objc.ID(0))
+	send(quoteWindow, "makeFirstResponder:", quoteEdit)
+}
+func closeQuoteEditor() { send(quoteWindow, "orderOut:", objc.ID(0)) }
+func quoteEditorText() string {
+	return objc.Send[string](send(quoteEdit, "string"), sel("UTF8String"))
+}
+func setQuoteEditorText(text string) { send(quoteEdit, "setString:", str(text)) }
+func quoteFile(save bool) string {
+	panel := send(cls("NSOpenPanel"), "openPanel")
+	if save {
+		panel = send(cls("NSSavePanel"), "savePanel")
+		send(panel, "setNameFieldStringValue:", str("ClockSprite-幹話語錄.txt"))
+	} else {
+		send(panel, "setAllowsMultipleSelection:", false)
+		send(panel, "setCanChooseDirectories:", false)
+	}
+	types := send(cls("NSMutableArray"), "array")
+	send(types, "addObject:", str("txt"))
+	send(panel, "setAllowedFileTypes:", types)
+	if send(panel, "runModal") != 1 {
+		return ""
+	}
+	return objc.Send[string](send(send(panel, "URL"), "path"), sel("UTF8String"))
 }

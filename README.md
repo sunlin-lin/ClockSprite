@@ -42,3 +42,15 @@ python package.py
 ## 授權
 
 程式碼與文件採 [MIT 授權](LICENSE)。角色圖片與動畫、語錄及辦公日曆資料的授權各自適用，程式碼的 MIT 授權不涵蓋這些內容。
+
+## 自訂幹話語錄
+
+右鍵點小精靈，開啟「設定」後按「幹話語錄」。編輯區每行一句，新增、修改或刪除後按「儲存」。儲存後，清單會與其他內建語錄一起隨機抽選。
+
+- 「匯入文字檔」讀取 UTF-8 的 TXT 檔，把新句子追加到編輯區。空行與重複句子會略過。按「儲存」才會套用。
+- 「匯出文字檔」把編輯區目前的清單存成 UTF-8 TXT，包含尚未儲存的修改。
+- 已儲存的清單位於資料根目錄的 `Settings/nonsense-quotes.json`。
+
+## 下載與發行
+
+Windows x64 和 macOS Universal 的 ZIP 可從 [GitHub Releases](https://github.com/sunlin-lin/ClockSprite/releases) 下載。發行流程會在版本號更新合併到 `main`，或推送相符的 `v` 版本標籤後，測試、建置並上傳兩個 ZIP。

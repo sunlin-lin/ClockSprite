@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -99,7 +100,11 @@ func legacyClockPath(root string) string {
 	return filepath.Join(local, "ClockSprite", "native-state.json")
 }
 func notice(message string) {
-	win(user, "MessageBoxW", settingsWindow, ptr(wtext(message)), ptr(wtext("社畜小精靈")), 0x30)
+	owner := settingsWindow
+	if quoteWindow != 0 && win(user, "IsWindowVisible", quoteWindow) != 0 {
+		owner = quoteWindow
+	}
+	win(user, "MessageBoxW", owner, ptr(wtext(message)), ptr(wtext("社畜小精靈")), 0x30)
 }
 func notify() {
 	tray = notifyData{Window: mascotWindow, ID: 1, Flags: 7, Callback: 0x8001, Icon: icon}
@@ -203,7 +208,7 @@ func wndProc(window, code, wp, lp uintptr) uintptr {
 			return 1
 		}
 	case 0x111:
-		if (window == settingsWindow || window == calendarWindow || window == reminderWindow) && wp>>16 == 0 {
+		if (window == settingsWindow || window == calendarWindow || window == reminderWindow || window == quoteWindow) && wp>>16 == 0 {
 			onAction(int(wp & 0xffff))
 			return 0
 		}
@@ -217,6 +222,10 @@ func wndProc(window, code, wp, lp uintptr) uintptr {
 			return 0
 		}
 	case 0x10:
+		if window == quoteWindow {
+			closeQuoteEditor()
+			return 0
+		}
 		if window == calendarWindow {
 			showCalendar(false)
 			return 0
@@ -253,7 +262,7 @@ func buttonW(title string, id int, x, y, w uintptr) {
 	child("BUTTON", title, 0x10000, x, y, w, 27, uintptr(id))
 }
 func buildSettings() {
-	labelW("打卡與語錄", 18, 14, 160)
+	buttonW("幹話語錄", actionQuoteSettings, 18, 9, 137)
 	forceClockButton = child("BUTTON", "強制提醒上下班打卡", 0x10003, 190, 9, 235, 25, 0)
 	appearanceButton = child("BUTTON", "角色圖示", 0x10000, 440, 9, 163, 26, actionAppearance)
 	labelW("上班", 18, 43, 40)
@@ -337,6 +346,9 @@ func showMascot(on bool) {
 	spriteVisible = on
 	updateSpriteTimer()
 	win(user, "ShowWindow", mascotWindow, command)
+	if customSpeech(bubblePick) != "" {
+		showQuoteBubbleW()
+	}
 }
 func updateSpriteTimer() {
 	play := spriteVisible && activeReminder.action == "" && len(activeSprite().frames) > 1
@@ -366,12 +378,13 @@ func paintMascot(pick int) {
 	if activeReminder.action != "" || spriteFrame < 0 {
 		spriteFrame = activeSprite().index(0)
 	}
+	wasQuote := customSpeech(bubblePick) != "" || quoteOverlay
 	if pick != bubblePick {
 		bubblePick = pick
 		spriteBubble = nil
 		if pick >= 0 || pick == -2 {
 			path := "art/reminder_cloud.png"
-			if pick >= 0 {
+			if pick >= 0 && customSpeech(pick) == "" {
 				path = fmt.Sprintf("art/bubbles/%03d.png", pick)
 			}
 			raw, _ := resources.ReadFile(path)
@@ -380,6 +393,12 @@ func paintMascot(pick int) {
 	}
 	updateSpriteTimer()
 	drawMascot()
+	if customSpeech(pick) != "" {
+		showQuoteBubbleW()
+	} else if wasQuote {
+		quoteOverlay = false
+		hideReminderBubble()
+	}
 }
 func drawMascot() {
 	frame := image.NewRGBA(image.Rect(0, 0, mascotWidth, mascotHeight))
@@ -507,6 +526,9 @@ func main() {
 		if win(user, "IsWindowVisible", reminderWindow) != 0 && win(user, "IsDialogMessageW", reminderWindow, ptr(&msg)) != 0 {
 			continue
 		}
+		if win(user, "IsWindowVisible", quoteWindow) != 0 && win(user, "IsDialogMessageW", quoteWindow, ptr(&msg)) != 0 {
+			continue
+		}
 		if win(user, "IsDialogMessageW", settingsWindow, ptr(&msg)) != 0 {
 			continue
 		}
@@ -560,6 +582,8 @@ const reminderColor = 0xEEF9FF
 func buildReminder() uintptr {
 	reminderBrush = win(gdi, "CreateSolidBrush", reminderColor)
 	reminderTitle = makeChild(reminderWindow, "STATIC", "", 1|0x80, 0, 2, 244, 32, 0)
+	quoteBubbleText = makeChild(reminderWindow, "STATIC", "", 1|0x80, 0, 5, 244, 70, 0)
+	win(user, "ShowWindow", quoteBubbleText, 0)
 	reminderDetail = makeChild(reminderWindow, "STATIC", "", 1, 0, 34, 244, 17, 0)
 	reminderConfirm = makeChild(reminderWindow, "BUTTON", "確認", 0x10000, 76, 52, 92, 25, actionConfirmReminder)
 	return reminderBrush
@@ -574,6 +598,10 @@ func positionReminder() {
 }
 func showReminderBubble(title, detail string) {
 	paintMascot(-2)
+	win(user, "ShowWindow", quoteBubbleText, 0)
+	for _, control := range []uintptr{reminderTitle, reminderDetail, reminderConfirm} {
+		win(user, "ShowWindow", control, 5)
+	}
 	win(user, "SetWindowTextW", reminderTitle, ptr(wtext(title)))
 	win(user, "SetWindowTextW", reminderDetail, ptr(wtext(detail)))
 	positionReminder()
@@ -645,7 +673,7 @@ func changeSpriteScale(scale int) {
 		window     uintptr
 		x, y, w, h int
 	}{
-		{reminderTitle, 0, 2, 244, 32}, {reminderDetail, 0, 34, 244, 17}, {reminderConfirm, 76, 52, 92, 25},
+		{reminderTitle, 0, 2, 244, 32}, {reminderDetail, 0, 34, 244, 17}, {reminderConfirm, 76, 52, 92, 25}, {quoteBubbleText, 0, 5, 244, 70},
 	} {
 		win(user, "MoveWindow", child.window, uintptr(scaled(child.x)), uintptr(scaled(child.y)), uintptr(scaled(child.w)), uintptr(scaled(child.h)), 1)
 	}
@@ -708,6 +736,79 @@ func chooseImageFile() string {
 	dialog := fileDialog{owner: settingsWindow, filter: &filter[0], file: &output[0], maxFile: uint32(len(output)), title: wtext("選擇小精靈圖示"), flags: dialogFlags}
 	dialog.size = uint32(unsafe.Sizeof(dialog))
 	result := win(syscall.NewLazyDLL("comdlg32.dll"), "GetOpenFileNameW", ptr(&dialog))
+	runtime.KeepAlive(&dialog)
+	if result == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(output)
+}
+
+var quoteWindow, quoteEdit, quoteBubbleText uintptr
+var quoteOverlay bool
+
+func showQuoteBubbleW() {
+	quoteOverlay = true
+	for _, control := range []uintptr{reminderTitle, reminderDetail, reminderConfirm} {
+		win(user, "ShowWindow", control, 0)
+	}
+	win(user, "SetWindowTextW", quoteBubbleText, ptr(wtext(customSpeech(bubblePick))))
+	win(user, "ShowWindow", quoteBubbleText, 5)
+	positionReminder()
+	win(user, "ShowWindow", reminderWindow, 4*boolW(spriteVisible))
+}
+
+func showQuoteEditor(text string) {
+	if quoteWindow != 0 && win(user, "IsWindowVisible", quoteWindow) != 0 {
+		win(user, "SetForegroundWindow", quoteWindow)
+		return
+	}
+	if quoteWindow == 0 {
+		var area [4]int32
+		win(user, "GetWindowRect", settingsWindow, ptr(&area))
+		quoteWindow = win(user, "CreateWindowExW", 0x80, ptr(wtext("ClockSpriteUnified")), ptr(wtext("幹話語錄")), 0x80CA0000, uintptr(area[0]), uintptr(area[1]), 625, 465, settingsWindow, 0, instance, 0)
+		if quoteWindow == 0 {
+			notice("無法開啟幹話語錄。")
+			return
+		}
+		makeChild(quoteWindow, "STATIC", "每行一句。匯入會追加新語錄，按儲存後才會生效。", 0, 15, 14, 580, 23, 0)
+		quoteEdit = makeChild(quoteWindow, "EDIT", "", 0xA11044, 15, 42, 575, 330, 0)
+		win(user, "SendMessageW", quoteEdit, 0xC5, maxQuoteFile, 0)
+		for i, button := range []struct {
+			title string
+			id    int
+		}{
+			{"匯入文字檔…", actionQuoteImport}, {"匯出文字檔…", actionQuoteExport}, {"儲存", actionQuoteSave},
+		} {
+			makeChild(quoteWindow, "BUTTON", button.title, 0x10000, uintptr(15+i*130), 386, 122, 29, uintptr(button.id))
+		}
+	}
+	setQuoteEditorText(text)
+	win(user, "ShowWindow", quoteWindow, 5)
+	win(user, "SetForegroundWindow", quoteWindow)
+	win(user, "SetFocus", quoteEdit)
+}
+func closeQuoteEditor() { win(user, "ShowWindow", quoteWindow, 0) }
+func quoteEditorText() string {
+	length := win(user, "GetWindowTextLengthW", quoteEdit)
+	buffer := make([]uint16, length+1)
+	win(user, "GetWindowTextW", quoteEdit, ptr(&buffer[0]), length+1)
+	return syscall.UTF16ToString(buffer)
+}
+func setQuoteEditorText(text string) {
+	win(user, "SetWindowTextW", quoteEdit, ptr(wtext(strings.ReplaceAll(text, "\n", "\r\n"))))
+}
+func quoteFile(save bool) string {
+	filter := append(syscall.StringToUTF16("UTF-8 文字檔"), syscall.StringToUTF16("*.txt")...)
+	filter = append(filter, 0)
+	output := make([]uint16, 32768)
+	method, title, flags := "GetOpenFileNameW", "匯入幹話語錄", uint32(0x81808)
+	if save {
+		method, title, flags = "GetSaveFileNameW", "匯出幹話語錄", 0x8080A
+		copy(output, syscall.StringToUTF16("ClockSprite-幹話語錄.txt"))
+	}
+	dialog := fileDialog{owner: quoteWindow, filter: &filter[0], file: &output[0], maxFile: uint32(len(output)), title: wtext(title), flags: flags, defaultExt: wtext("txt")}
+	dialog.size = uint32(unsafe.Sizeof(dialog))
+	result := win(syscall.NewLazyDLL("comdlg32.dll"), method, ptr(&dialog))
 	runtime.KeepAlive(&dialog)
 	if result == 0 {
 		return ""

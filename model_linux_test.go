@@ -272,3 +272,37 @@ func TestAllQuoteBubblesPackaged(t *testing.T) {
 		}
 	}
 }
+
+var quoteTestEditor string
+
+func showQuoteEditor(text string)    { setQuoteEditorText(text) }
+func closeQuoteEditor()              {}
+func quoteEditorText() string        { return quoteTestEditor }
+func setQuoteEditorText(text string) { quoteTestEditor = text }
+func quoteFile(bool) string          { return "" }
+
+func TestNonsenseQuoteImportAndSave(t *testing.T) {
+	previousPath, previousQuotes, previousCustom := settingsPath, nonsenseQuotes, customQuotes
+	t.Cleanup(func() { settingsPath, nonsenseQuotes, customQuotes = previousPath, previousQuotes, previousCustom })
+	settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	if err := loadQuotes(); err != nil || len(nonsenseQuotes) != 100 {
+		t.Fatalf("default quotes: %d, %v", len(nonsenseQuotes), err)
+	}
+	setQuoteEditorText("先喝咖啡\n好想下班")
+	path := filepath.Join(filepath.Dir(settingsPath), "import.txt")
+	if err := os.WriteFile(path, []byte("\uFEFF好想下班\r\n \r\n 下班啦 \r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := importQuotes(path); err != nil || quoteEditorText() != "先喝咖啡\n好想下班\n下班啦" {
+		t.Fatalf("import: %q, %v", quoteEditorText(), err)
+	}
+	handleQuoteAction(actionQuoteSave)
+	if err := loadQuotes(); err != nil || speechCount() != 203 || customSpeech(202) != "下班啦" {
+		t.Fatalf("reloaded quotes: %v, %v", nonsenseQuotes, err)
+	}
+	setQuoteEditorText("")
+	handleQuoteAction(actionQuoteSave)
+	if err := loadQuotes(); err != nil || speechCount() != 200 {
+		t.Fatalf("empty list should stay empty: %d, %v", speechCount(), err)
+	}
+}

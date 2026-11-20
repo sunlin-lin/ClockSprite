@@ -121,6 +121,9 @@ func loadStores(base, oldClock, oldChecklist string) error {
 			return err
 		}
 	}
+	if err := loadQuotes(); err != nil {
+		return err
+	}
 	clock = clockState{Times: [2]string{"08:30", "18:00"}, Minutes: 60, Days: map[string]bool{}, Acknowledged: map[string]bool{}}
 	for _, year := range []int{2026, 2027} {
 		raw, _ := resources.ReadFile(fmt.Sprintf("%d.csv", year))
