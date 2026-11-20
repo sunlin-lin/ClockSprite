@@ -105,6 +105,31 @@ func label(parent objc.ID, value string, dims rect) objc.ID {
 	send(field, "setStringValue:", str(value))
 	return field
 }
+
+// The desktop window is transparent and normally inactive. Give its controls
+// their own colors so AppKit's inactive appearance cannot hide the text.
+func spriteColor(red, green, blue float64) objc.ID {
+	return send(cls("NSColor"), "colorWithSRGBRed:green:blue:alpha:", red, green, blue, 1.0)
+}
+
+func styleSpriteButton(button objc.ID, title string, fontSize float64) {
+	send(button, "setBordered:", false)
+	send(button, "setWantsLayer:", true)
+	layer := send(button, "layer")
+	send(layer, "setBackgroundColor:", send(spriteColor(0.19, 0.25, 0.34), "CGColor"))
+	send(layer, "setBorderColor:", send(spriteColor(0.90, 0.92, 0.95), "CGColor"))
+	send(layer, "setBorderWidth:", 1.0)
+	send(layer, "setCornerRadius:", 6.0)
+
+	attributes := send(cls("NSMutableDictionary"), "dictionary")
+	send(attributes, "setObject:forKey:", send(cls("NSColor"), "whiteColor"), str("NSColor"))
+	send(attributes, "setObject:forKey:", send(cls("NSFont"), "boldSystemFontOfSize:", fontSize), str("NSFont"))
+	styled := send(send(cls("NSAttributedString"), "alloc"), "initWithString:attributes:", str(title), attributes)
+	send(button, "setTitle:", str(title))
+	send(button, "setAttributedTitle:", styled)
+	send(styled, "release")
+}
+
 func edit(parent objc.ID, id int, dims rect) {
 	fields[id] = control(parent, cls("NSTextField"), dims)
 }
@@ -281,6 +306,7 @@ func build() {
 	send(mascotWindow, "setLevel:", int64(3))
 	send(mascotWindow, "setCollectionBehavior:", uint64(1|16|256))
 	parent := send(mascotWindow, "contentView")
+	send(parent, "setWantsLayer:", true)
 	mascotView = control(parent, imageClass, frame(spriteX, 310-spriteY-spriteH, spriteW, spriteH))
 	spriteImages = make([]objc.ID, len(activeSprite().frames))
 	if len(spriteImages) > 0 {
@@ -293,11 +319,11 @@ func build() {
 	bubbleView = control(parent, imageClass, frame(0, 176, 340, 134))
 	quoteBubbleText = label(parent, "", frame(48, 207, 244, 76))
 	send(quoteBubbleText, "setAlignment:", int64(2))
+	send(quoteBubbleText, "setTextColor:", spriteColor(0.16, 0.12, 0.11))
 	send(quoteBubbleText, "setLineBreakMode:", int64(1))
 	buildReminder(parent)
-	grip := control(parent, gripClass, frame(313, 3, 25, 25))
-	send(grip, "setTitle:", str("◢"))
-	send(grip, "setBezelStyle:", int64(1))
+	grip := control(parent, gripClass, frame(307, 3, 30, 30))
+	styleSpriteButton(grip, "↘", 19)
 	send(grip, "setToolTip:", str("拖曳調整大小"))
 	changeSpriteScale(storedSpriteScale())
 	settingsWindow = window("社畜小精靈設定", frame(x-665, y+60, 625, 555), 3)
@@ -459,9 +485,11 @@ func buildReminder(parent objc.ID) {
 	send(reminderTitle, "setLineBreakMode:", int64(4))
 	reminderDetail = label(parent, "", frame(48, 215, 244, 19))
 	send(reminderDetail, "setAlignment:", int64(2))
+	for _, field := range []objc.ID{reminderTitle, reminderDetail} {
+		send(field, "setTextColor:", spriteColor(0.16, 0.12, 0.11))
+	}
 	reminderButton = control(parent, reminderButtonClass, frame(120, 188, 100, 29))
-	send(reminderButton, "setBezelStyle:", int64(1))
-	send(reminderButton, "setTitle:", str("確認"))
+	styleSpriteButton(reminderButton, "確認", 14)
 	send(reminderButton, "setTag:", int64(actionConfirmReminder))
 	send(reminderButton, "setTarget:", controller)
 	send(reminderButton, "setAction:", sel("performChecklistAction:"))
