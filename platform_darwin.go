@@ -356,6 +356,12 @@ func build() {
 	}
 	button(parent, "清空", actionClear, frame(15, 279, 110, 30), false)
 	button(parent, "儲存提醒", actionSave, frame(127, 279, 110, 30), false)
+	repeatButton = button(parent, "時段內重複", actionRepeatMode, frame(247, 281, 109, 25), true)
+	label(parent, "到", frame(361, 282, 20, 23))
+	edit(parent, fieldEndTime, frame(383, 282, 68, 23))
+	label(parent, "每隔", frame(461, 282, 36, 23))
+	edit(parent, fieldInterval, frame(502, 282, 48, 23))
+	label(parent, "分鐘", frame(557, 282, 48, 23))
 	pendingTab = button(parent, "待辦與排程", actionShowPending, frame(18, 247, 113, 27), true)
 	historyTab = button(parent, "完成紀錄", actionShowHistory, frame(140, 247, 108, 27), true)
 	send(pendingTab, "setButtonType:", int64(4))
@@ -695,4 +701,18 @@ func quoteFile(save bool) string {
 		return ""
 	}
 	return objc.Send[string](send(send(panel, "URL"), "path"), sel("UTF8String"))
+}
+
+var repeatButton objc.ID
+
+func repeatMode() bool { return send(repeatButton, "state") == 1 }
+func setRepeatMode(on bool) {
+	state := int64(0)
+	if on {
+		state = 1
+	}
+	send(repeatButton, "setState:", state)
+	for _, field := range []int{fieldEndTime, fieldInterval} {
+		send(fields[field], "setEnabled:", on)
+	}
 }

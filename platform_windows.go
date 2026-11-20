@@ -288,6 +288,12 @@ func buildSettings() {
 	}
 	buttonW("清空", actionClear, 18, 231, 105)
 	buttonW("儲存提醒", actionSave, 132, 231, 104)
+	repeatButton = child("BUTTON", "時段內重複", 0x10003, 249, 231, 104, 26, actionRepeatMode)
+	labelW("到", 360, 236, 20)
+	editW(fieldEndTime, 382, 231, 69)
+	labelW("每隔", 460, 236, 34)
+	editW(fieldInterval, 499, 231, 48)
+	labelW("分鐘", 554, 236, 46)
 	pendingTab = child("BUTTON", "待辦與排程", 0x30009, 18, 269, 108, 25, actionShowPending)
 	historyTab = child("BUTTON", "完成紀錄", 0x10009, 136, 269, 105, 25, actionShowHistory)
 	list = child("LISTBOX", "", 0xA10001, 18, 298, 586, 190, 0)
@@ -814,4 +820,14 @@ func quoteFile(save bool) string {
 		return ""
 	}
 	return syscall.UTF16ToString(output)
+}
+
+var repeatButton uintptr
+
+func repeatMode() bool { return win(user, "SendMessageW", repeatButton, 0xF0, 0, 0) == 1 }
+func setRepeatMode(on bool) {
+	win(user, "SendMessageW", repeatButton, 0xF1, boolW(on), 0)
+	for _, field := range []int{fieldEndTime, fieldInterval} {
+		win(user, "EnableWindow", fields[field], boolW(on))
+	}
 }

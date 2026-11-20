@@ -31,11 +31,14 @@ type rule struct {
 	ID, Title, Date, Time string
 	Days                  []int
 	Starts                time.Time
+	EndTime               string `json:",omitempty"`
+	Interval              int    `json:",omitempty"`
 }
 
 type item struct {
 	Rule, Day, Title, Time string
 	Completed              bool
+	Repeated               bool `json:",omitempty"`
 }
 
 type state struct {
@@ -71,7 +74,7 @@ func advance(s state, now time.Time) (state, bool) {
 	s.Items = slices.Clone(s.Items)
 	keys := make(map[string]bool, len(s.Items))
 	for _, entry := range s.Items {
-		keys[entry.Rule+"/"+entry.Day] = true
+		keys[entry.Rule+"/"+entry.occurrence()] = true
 	}
 	added := false
 	for day := midnight; !day.After(now); day = day.AddDate(0, 0, 1) {
@@ -84,12 +87,32 @@ func advance(s state, now time.Time) (state, bool) {
 				continue
 			}
 			threshold, err := time.ParseInLocation("2006-01-02 15:04", date+" "+task.Time, taipei)
-			if err != nil || threshold.After(now) || threshold.Before(task.Starts) || keys[task.ID+"/"+date] || s.Cleared[task.ID+"/"+date] {
+			if err != nil {
 				continue
 			}
-			s.Items = append(s.Items, item{Rule: task.ID, Day: date, Title: task.Title, Time: task.Time})
-			keys[task.ID+"/"+date] = true
-			added = true
+			end := threshold
+			step := time.Minute
+			repeated := task.Interval > 0 && task.Interval <= 1440
+			if repeated {
+				end, err = time.ParseInLocation("2006-01-02 15:04", date+" "+task.EndTime, taipei)
+				if err != nil || end.Before(threshold) {
+					continue
+				}
+				step = time.Duration(task.Interval) * time.Minute
+			}
+			for due := threshold; !due.After(end) && !due.After(now); due = due.Add(step) {
+				if due.Before(task.Starts) {
+					continue
+				}
+				entry := item{Rule: task.ID, Day: date, Title: task.Title, Time: due.Format("15:04"), Repeated: repeated}
+				key := task.ID + "/" + entry.occurrence()
+				if keys[key] || s.Cleared[key] {
+					continue
+				}
+				s.Items = append(s.Items, entry)
+				keys[key] = true
+				added = true
+			}
 		}
 	}
 	if now.Before(s.Scanned) {
@@ -128,9 +151,20 @@ var (
 	syncResults                           = make(chan calendarReply, 1)
 )
 
+func (entry item) occurrence() string {
+	if entry.Repeated {
+		return entry.Day + "/" + entry.Time
+	}
+	return entry.Day
+}
+
 func scheduleText(task rule) string {
+	timing := task.Time
+	if task.Interval > 0 {
+		timing += fmt.Sprintf("–%s（每 %d 分鐘）", task.EndTime, task.Interval)
+	}
 	if task.Date != "" {
-		return task.Date + "  " + task.Time
+		return task.Date + "  " + timing
 	}
 	var names []string
 	for _, day := range weekdayOrder {
@@ -138,7 +172,7 @@ func scheduleText(task rule) string {
 			names = append(names, weekdays[day])
 		}
 	}
-	return "每週" + strings.Join(names, "、") + "  " + task.Time
+	return "每週" + strings.Join(names, "、") + "  " + timing
 }
 
 func populate() {
@@ -155,7 +189,7 @@ func populate() {
 	}
 	for _, entry := range checklist.data.Items {
 		if !entry.Completed {
-			add(row{"□  " + entry.Day + " " + entry.Time + "  " + entry.Title, "complete", entry.Rule, entry.Day})
+			add(row{"□  " + entry.Day + " " + entry.Time + "  " + entry.Title, "complete", entry.Rule, entry.occurrence()})
 		}
 	}
 	for _, task := range checklist.data.Rules {
@@ -163,7 +197,7 @@ func populate() {
 	}
 	for _, entry := range slices.Backward(checklist.data.Items) {
 		if entry.Completed {
-			history = append(history, row{"✓  " + entry.Day + " " + entry.Time + "  " + entry.Title, "restore", entry.Rule, entry.Day})
+			history = append(history, row{"✓  " + entry.Day + " " + entry.Time + "  " + entry.Title, "restore", entry.Rule, entry.occurrence()})
 		}
 	}
 	rows = pending
@@ -193,6 +227,9 @@ func newRule() {
 	setInput(fieldTitle, "")
 	setInput(fieldDate, localDate(time.Now()))
 	setInput(fieldTime, "09:00")
+	setInput(fieldEndTime, "")
+	setInput(fieldInterval, "")
+	setRepeatMode(false)
 	setMode(false)
 	for i := range weekdays {
 		setChecked(i, false)
@@ -227,6 +264,8 @@ func onAction(id int) {
 		calendarAction(id)
 	case actionMode:
 		modeChanged()
+	case actionRepeatMode:
+		setRepeatMode(repeatMode())
 	case actionClock:
 		next := clock
 		for i, field := range []int{fieldIn, fieldOut} {
@@ -271,6 +310,12 @@ func onAction(id int) {
 			setInput(fieldTitle, task.Title)
 			setInput(fieldDate, task.Date)
 			setInput(fieldTime, task.Time)
+			setInput(fieldEndTime, task.EndTime)
+			setInput(fieldInterval, "")
+			if task.Interval > 0 {
+				setInput(fieldInterval, strconv.Itoa(task.Interval))
+			}
+			setRepeatMode(task.Interval > 0)
 			if task.Date == "" {
 				setInput(fieldDate, localDate(time.Now()))
 			}
@@ -334,6 +379,17 @@ func saveRule(now time.Time) error {
 	if !validTime(task.Time) {
 		return errors.New("請輸入 24 小時制時間，例如 09:30。")
 	}
+	if repeatMode() {
+		task.EndTime = strings.TrimSpace(input(fieldEndTime))
+		if !validTime(task.EndTime) || task.EndTime <= task.Time {
+			return errors.New("結束時間須晚於開始時間，且在同一天。")
+		}
+		var err error
+		task.Interval, err = strconv.Atoi(strings.TrimSpace(input(fieldInterval)))
+		if err != nil || task.Interval < 1 || task.Interval > 1440 {
+			return errors.New("提醒間隔請輸入 1 到 1440 分鐘。")
+		}
+	}
 	var dateTime time.Time
 	if weeklyMode() {
 		for i := range weekdays {
@@ -357,9 +413,14 @@ func saveRule(now time.Time) error {
 	index := slices.IndexFunc(next.Rules, func(prior rule) bool { return prior.ID == task.ID })
 	if index >= 0 {
 		old := next.Rules[index]
-		if old.Date == task.Date && old.Time == task.Time && slices.Equal(old.Days, task.Days) {
+		if old.Date == task.Date && old.Time == task.Time && old.EndTime == task.EndTime && old.Interval == task.Interval && slices.Equal(old.Days, task.Days) {
 			task.Starts = old.Starts
 		}
+	}
+	if task.Date != "" && task.Interval > 0 {
+		end, _ := time.ParseInLocation("2006-01-02 15:04", task.Date+" "+task.EndTime, taipei)
+		step := time.Duration(task.Interval) * time.Minute
+		dateTime = dateTime.Add(end.Sub(dateTime) / step * step)
 	}
 	if task.Date != "" && dateTime.Before(task.Starts) {
 		return errors.New("請選擇現在或未來的日期與時間。")
@@ -640,5 +701,8 @@ const (
 	actionQuoteSave
 	actionQuoteImport
 	actionQuoteExport
+	fieldEndTime
+	fieldInterval
+	actionRepeatMode
 	actionCalendarDay = 200
 )

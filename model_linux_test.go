@@ -306,3 +306,47 @@ func TestNonsenseQuoteImportAndSave(t *testing.T) {
 		t.Fatalf("empty list should stay empty: %d, %v", speechCount(), err)
 	}
 }
+
+var repeatModeOn bool
+
+func repeatMode() bool      { return repeatModeOn }
+func setRepeatMode(on bool) { repeatModeOn = on }
+
+func TestIntervalOccurrencesRemainIndependent(t *testing.T) {
+	now := at(t, "2026-11-19 17:00")
+	prior := state{
+		Scanned: now.Add(-time.Hour * 8),
+		Rules:   []rule{{ID: "weekly", Days: []int{4}, Time: "09:00", EndTime: "17:00", Interval: 90}},
+	}
+	next, added := advance(prior, now)
+	if !added || len(next.Items) != 6 || next.Items[5].Time != "16:30" {
+		t.Fatalf("unexpected occurrences: %+v", next.Items)
+	}
+	next.Items[0].Completed = true
+	next = clearCompleted(next)
+	next, added = advance(next, now.Add(time.Minute))
+	if added || len(next.Items) != 5 || next.Items[0].Time != "10:30" {
+		t.Fatalf("clearing one occurrence affected its siblings: %+v", next.Items)
+	}
+}
+
+func TestIntervalRuleStartsMidWindow(t *testing.T) {
+	saved := checklist
+	t.Cleanup(func() { checklist = saved; setRepeatMode(false) })
+	checklist = app{rulesPath: filepath.Join(t.TempDir(), "rules.json")}
+	newRule()
+	setInput(fieldTitle, "伸展")
+	setInput(fieldDate, "2026-11-19")
+	setInput(fieldTime, "09:00")
+	setInput(fieldEndTime, "17:00")
+	setInput(fieldInterval, "120")
+	setRepeatMode(true)
+	now := at(t, "2026-11-19 12:30")
+	if err := saveRule(now); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := advance(checklist.data, now.Add(5*time.Hour))
+	if len(next.Items) != 3 || next.Items[0].Time != "13:00" || next.Items[2].Time != "17:00" {
+		t.Fatalf("unexpected remaining slots: %+v", next.Items)
+	}
+}

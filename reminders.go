@@ -28,7 +28,7 @@ func completeRow(selected row) {
 	case "complete", "restore":
 		next := checklist.data
 		next.Items = slices.Clone(next.Items)
-		index := slices.IndexFunc(next.Items, func(entry item) bool { return entry.Rule == selected.id && entry.Day == selected.day })
+		index := slices.IndexFunc(next.Items, func(entry item) bool { return entry.Rule == selected.id && entry.occurrence() == selected.day })
 		if index < 0 {
 			return
 		}
@@ -93,7 +93,7 @@ func reminderText(entry row, count int) (string, string) {
 		return title, date + "  ·  " + counter
 	}
 	for _, item := range checklist.data.Items {
-		if item.Rule == entry.id && item.Day == entry.day {
+		if item.Rule == entry.id && item.occurrence() == entry.day {
 			return item.Title, item.Day + "  " + item.Time + "  ·  " + counter
 		}
 	}
@@ -110,7 +110,7 @@ func clearCompleted(next state) state {
 		if !entry.Completed {
 			return false
 		}
-		next.Cleared[entry.Rule+"/"+entry.Day] = true
+		next.Cleared[entry.Rule+"/"+entry.occurrence()] = true
 		return true
 	})
 	return next
