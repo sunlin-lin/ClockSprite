@@ -2,6 +2,11 @@ name: Publish ClockSprite release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - Info.plist
+      - .github/workflows/release.yml
     tags:
       - 'v*'
   workflow_dispatch:
