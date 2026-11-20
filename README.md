@@ -1,5 +1,7 @@
 # 社畜小精靈
 
+![蜜袋鼯小精靈打字動畫](art/floating_mascot.gif)
+
 先從系統匣或選單列結束舊版小精靈和舊版提醒清單。解壓縮後，Windows 開啟 ClockSprite.exe，macOS 開啟 ClockSprite.app。既有設定、待辦、完成紀錄、打卡確認及日曆快取使用原有資料位置。
 
 右鍵點桌面上的小精靈，選「設定」。Windows 也可右鍵點右下角系統匣圖示，Mac 可點右上角選單列圖示。所有設定都在同一個桌面視窗。
